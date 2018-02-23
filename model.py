@@ -21,29 +21,75 @@ def SRGAN_g(t_image, is_train=False, reuse=False):
     with tf.variable_scope("SRGAN_g", reuse=reuse) as vs:
         tl.layers.set_name_reuse(reuse)
         n = InputLayer(t_image, name='in')
+        """
+        Parameters: 
+        net : TensorLayer layer.
+
+        n_filter : number of filter.
+
+        filter_size : tuple (height, width) for filter size.
+
+        strides : tuple (height, width) for strides.
+
+        act : None or activation function.
+        """
+        #k3n64s1
         n = Conv2d(n, 64, (3, 3), (1, 1), act=tf.nn.relu, padding='SAME', W_init=w_init, name='n64s1/c')
         temp = n
 
         # B residual blocks
         for i in range(16):
+            #Conv(k3n64s1)
             nn = Conv2d(n, 64, (3, 3), (1, 1), act=None, padding='SAME', W_init=w_init, b_init=b_init, name='n64s1/c1/%s' % i)
+            #BN,ReLU
             nn = BatchNormLayer(nn, act=tf.nn.relu, is_train=is_train, gamma_init=g_init, name='n64s1/b1/%s' % i)
+            #Conv(k3n64s1)
             nn = Conv2d(nn, 64, (3, 3), (1, 1), act=None, padding='SAME', W_init=w_init, b_init=b_init, name='n64s1/c2/%s' % i)
+            #BN
             nn = BatchNormLayer(nn, is_train=is_train, gamma_init=g_init, name='n64s1/b2/%s' % i)
+            #Elementwise Sum
             nn = ElementwiseLayer([n, nn], tf.add, 'b_residual_add/%s' % i)
             n = nn
 
+        #Conv(k3n64s1)
         n = Conv2d(n, 64, (3, 3), (1, 1), act=None, padding='SAME', W_init=w_init, b_init=b_init, name='n64s1/c/m')
+        #BN
         n = BatchNormLayer(n, is_train=is_train, gamma_init=g_init, name='n64s1/b/m')
+        #Elementwise Sum
         n = ElementwiseLayer([n, temp], tf.add, 'add3')
         # B residual blacks end
 
+
+
+
+        #Conv(k3n256s1)
         n = Conv2d(n, 256, (3, 3), (1, 1), act=None, padding='SAME', W_init=w_init, name='n256s1/1')
+        #pixelshufflerx2,ReLU
+        """
+        SubpixelConv2d
+        Parameters: 
+        net : TensorLayer layer.
+
+        scale : int, upscaling ratio, a wrong setting will lead to Dimension size error.
+
+        n_out_channel : int or None, the number of output channels.
+
+        Note that, the number of input channels == (scale x scale) x The number of output channels. If None, automatically set n_out_channel == the number of input channels / (scale x scale).
+
+        act : activation function.
+
+        name : string.
+
+        An optional name to attach to this layer.
+        """
         n = SubpixelConv2d(n, scale=2, n_out_channel=None, act=tf.nn.relu, name='pixelshufflerx2/1')
 
+        #Conv(k3n256s1)
         n = Conv2d(n, 256, (3, 3), (1, 1), act=None, padding='SAME', W_init=w_init, name='n256s1/2')
+        #pixelshufflerx2,ReLU
         n = SubpixelConv2d(n, scale=2, n_out_channel=None, act=tf.nn.relu, name='pixelshufflerx2/2')
 
+        #Conv(k1n3s1)
         n = Conv2d(n, 3, (1, 1), (1, 1), act=tf.nn.tanh, padding='SAME', W_init=w_init, name='out')
         return n
 
@@ -89,18 +135,47 @@ def SRGAN_g2(t_image, is_train=False, reuse=False):
         # n = SubpixelConv2d(n, scale=2, n_out_channel=None, act=tf.nn.relu, name='pixelshufflerx2/2')
 
         ## 0, 1, 2, 3 BILINEAR NEAREST BICUBIC AREA
+        """
+        The UpSampling2dLayer class is upSampling 2d layer, see tf.image.resize_images.
+
+        Parameters: 
+        layer : a layer class with 4-D Tensor of shape [batch, height, width, channels] or 3-D Tensor of shape [height, width, channels].
+
+        size : a tuple of int or float.
+
+        (height, width) scale factor or new size of height and width.
+
+        is_scale : boolean, if True (default), size is scale factor, otherwise, size is number of pixels of height and width.
+
+        method : 0, 1, 2, 3. ResizeMethod. Defaults to ResizeMethod.BILINEAR.
+
+        ResizeMethod.BILINEAR, Bilinear interpolation.
+        ResizeMethod.NEAREST_NEIGHBOR, Nearest neighbor interpolation.
+        ResizeMethod.BICUBIC, Bicubic interpolation.
+        ResizeMethod.AREA, Area interpolation.
+        align_corners : bool. If true, exactly align all 4 corners of the input and output. Defaults to false.
+
+        name : a string or None
+
+An optional name to attach to this layer.
+        """
         n = UpSampling2dLayer(n, size=[size[1]*2, size[2]*2], is_scale=False, method=1, align_corners=False, name='up1/upsample2d')
+        #Conv(k3n64s1)
         n = Conv2d(n, 64, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='up1/conv2d')   # <-- may need to increase n_filter
+        #BN,ReLU
         n = BatchNormLayer(n, act=tf.nn.relu,
                 is_train=is_train, gamma_init=g_init, name='up1/batch_norm')
 
         n = UpSampling2dLayer(n, size=[size[1]*4, size[2]*4], is_scale=False, method=1, align_corners=False, name='up2/upsample2d')
+        #Conv(k3n32s1)
         n = Conv2d(n, 32, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='up2/conv2d')     # <-- may need to increase n_filter
+        #BN,ReLU
         n = BatchNormLayer(n, act=tf.nn.relu,
                 is_train=is_train, gamma_init=g_init, name='up2/batch_norm')
 
+        #Conv(k1n3s1)
         n = Conv2d(n, 3, (1, 1), (1, 1), act=tf.nn.tanh, padding='SAME', W_init=w_init, name='out')
         return n
 
@@ -138,7 +213,7 @@ def SRGAN_d2(t_image, is_train=False, reuse=False):
 
         n = Conv2d(n, 512, (3, 3), (2, 2), act=lrelu, padding='SAME', W_init=w_init, b_init=b_init, name='n512s2/c')
         n = BatchNormLayer(n, is_train=is_train, gamma_init=g_init, name='n512s2/b')
-
+        #The FlattenLayer class is layer which reshape high-dimension input to a vector. Then we can apply DenseLayer, RNNLayer, ConcatLayer and etc on the top of it.
         n = FlattenLayer(n, name='f')
         n = DenseLayer(n, n_units=1024, act=lrelu, name='d1024')
         n = DenseLayer(n, n_units=1, name='out')
@@ -287,7 +362,8 @@ def Vgg19_simple_api(rgb, reuse):
                     strides=(1, 1), act=tf.nn.relu,padding='SAME', name='conv4_4')
         network = MaxPool2d(network, filter_size=(2, 2), strides=(2, 2),
                     padding='SAME', name='pool4')                               # (batch_size, 14, 14, 512)
-        conv = network
+        with tf.name_scope('VGG_OUTPUT_CONV'):
+            conv = network
         """ conv5 """
         network = Conv2d(network, n_filter=512, filter_size=(3, 3),
                     strides=(1, 1), act=tf.nn.relu,padding='SAME', name='conv5_1')
