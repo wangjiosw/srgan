@@ -9,9 +9,11 @@ import logging, scipy
 
 import tensorflow as tf
 import tensorlayer as tl
-from model import *
+from model2 import *
 from utils import *
 from config import config, log_config
+
+LAMBDA = 10
 
 ###====================== HYPER-PARAMETERS ===========================###
 ## Adam
@@ -144,13 +146,29 @@ def train():
     # tf.ones_like Given a single tensor (tensor), this operation returns a tensor of the same type and shape as tensor
     # with all elements set to 1. Optionally, you can specify a new type (dtype) for the returned tensor.
     with tf.name_scope('D_LOSS'):
-        d_loss1 = tl.cost.sigmoid_cross_entropy(logits_real, tf.ones_like(logits_real), name='d1')
-        d_loss2 = tl.cost.sigmoid_cross_entropy(logits_fake, tf.zeros_like(logits_fake), name='d2')
-        d_loss = d_loss1 + d_loss2
+        d_loss1 = -logits_real
+        d_loss2 = logits_fake
+        #d_loss1 = tl.cost.sigmoid_cross_entropy(logits_real, tf.ones_like(logits_real), name='d1')
+        #d_loss2 = tl.cost.sigmoid_cross_entropy(logits_fake, tf.zeros_like(logits_fake), name='d2')
+        d_loss = tf.reduce_mean(d_loss1 + d_loss2)
+        alpha = tf.random_uniform(
+            shape=[batch_size,160,160,3], 
+            minval=0.,
+            maxval=1.
+        )
+        differences = net_g.outputs - t_target_image
+        interpolates = t_target_image + (alpha*differences)
+        _,out = SRGAN_d(interpolates, is_train=True, reuse=True)
+        gradients = tf.gradients(out, [interpolates])
+        slopes = tf.sqrt(tf.reduce_sum(tf.reduce_sum(tf.square(gradients))))
+        gradient_penalty = tf.reduce_mean((slopes-1.)**2)
+        d_loss += LAMBDA*gradient_penalty
         tf.summary.scalar('d_loss',d_loss)
+        
 
     with tf.name_scope('G_LOSS'):
-        g_gan_loss = 1e-3 * tl.cost.sigmoid_cross_entropy(logits_fake, tf.ones_like(logits_fake), name='g')
+        g_gan_loss = -tf.reduce_mean(1e-3 * logits_fake)
+        #g_gan_loss = 1e-3 * tl.cost.sigmoid_cross_entropy(logits_fake, tf.ones_like(logits_fake), name='g')
         tf.summary.scalar('g_gan_loss',g_gan_loss)
 
         mse_loss = tl.cost.mean_squared_error(net_g.outputs , t_target_image, is_mean=True)
@@ -161,6 +179,9 @@ def train():
 
         g_loss = mse_loss + vgg_loss + g_gan_loss
         tf.summary.scalar('g_loss',g_loss)
+    
+    
+    
 
 
     g_vars = tl.layers.get_variables_with_name('SRGAN_g', True, True)

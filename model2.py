@@ -289,7 +289,7 @@ def SRGAN_d(input_images, is_train=True, reuse=False):
         net_ho = DenseLayer(net_ho, n_units=1, act=tf.identity,
                 W_init = w_init, name='ho/dense')
         logits = net_ho.outputs
-        net_ho.outputs = tf.nn.sigmoid(net_ho.outputs)
+        #net_ho.outputs = tf.nn.sigmoid(net_ho.outputs)
 
     return net_ho, logits
 
